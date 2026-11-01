@@ -42,6 +42,7 @@ import android.os.RemoteException;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.MenuItem;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -89,6 +90,8 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
     public final ParcelUuid asteroidUUID = fromString(AsteroidUUIDS.SERVICE_UUID.toString());
     Messenger mSyncServiceMessenger;
     ActivityResultLauncher<Intent> mLocationEnableActivityLauncher;
+    ActivityResultLauncher<Intent> mBluetoothEnableActivityLauncher;
+    ActivityResultLauncher<String[]> mScanPermissionsLauncher;
     LocationManager mLocationManager;
     /* Synchronization service events handling */
     private final ServiceConnection mConnection = new ServiceConnection() {
@@ -112,16 +115,14 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
         public void onScanResult(int callbackType, @NonNull ScanResult result) {
             super.onScanResult(callbackType, result);
 
-            if (mListFragment == null) return;
+            if (mListFragment == null || mListFragment.getView() == null || !hasScanPermissions()) return;
             mListFragment.deviceDiscovered(result.getDevice());
-            if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ActivityCompat.requestPermissions(getParent(), new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 225);
-                }
-                return;
-            }
-            Log.d(TAG, "SCAN RESULT:" + result.getDevice() + " Name:" + result.getDevice().getName());
-            ParcelUuid[] arr = result.getDevice().getUuids();
+        }
+
+        @Override
+        public void onScanFailed(int errorCode) {
+            Log.e(TAG, "Bluetooth scan failed: " + errorCode);
+            scanFailed();
         }
     };
     private DeviceDetailFragment mDetailFragment;
@@ -144,6 +145,7 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
 
         mSettings = new ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setUseHardwareFilteringIfSupported(false)
                 .build();
         mFilters = new ArrayList<>();
         mFilters.add(new ScanFilter.Builder().setServiceUuid(asteroidUUID).build());
@@ -153,7 +155,18 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> btEnableAndScan()
         );
-        btEnable();
+        mBluetoothEnableActivityLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK) btEnableAndScan();
+                    else scanFailed();
+                });
+        mScanPermissionsLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    if (hasScanPermissions()) btEnableAndScan();
+                    else scanFailed();
+                });
 
         /* Start and/or attach to the Synchronization Service */
         mSyncServiceIntent = new Intent(this, SynchronizationService.class);
@@ -180,6 +193,7 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
 
     @Override
     public void onDestroy() {
+        stopScan();
         super.onDestroy();
         if (mStatus != IAsteroidDevice.ConnectionState.STATUS_CONNECTED)
             stopService(mSyncServiceIntent);
@@ -188,7 +202,7 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
     /* Fragments switching */
     @Override
     public void onDefaultDeviceSelected(BluetoothDevice mDevice) {
-        mScanner.stopScan(scanCallback);
+        stopScan();
         mListFragment.scanningStopped();
         mDetailFragment = new DeviceDetailFragment();
 
@@ -248,8 +262,7 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
 
     @Override
     public void onConnectRequested() {
-        if (mScanner != null)
-            mScanner.stopScan(scanCallback);
+        stopScan();
         try {
             Message msg = Message.obtain(null, SynchronizationService.MSG_CONNECT);
             msg.replyTo = mDeviceDetailMessenger;
@@ -372,26 +385,56 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
 
     @Override
     public void onScanRequested() {
-        btEnableAndScan();
         if (mListFragment != null) mListFragment.scanningStarted();
         else if (mDetailFragment != null) mDetailFragment.scanningStarted();
+        btEnableAndScan();
     }
 
-    private void btEnable() {
-        BluetoothAdapter mBtAdapter;
-        mBtAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (!mBtAdapter.isEnabled()) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ActivityCompat.requestPermissions(getParent(), new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 225);
-                }
-                return;
-            }
-            mBtAdapter.enable();
+    private boolean hasScanPermissions() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return false;
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                        == PackageManager.PERMISSION_GRANTED &&
+                 ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                        == PackageManager.PERMISSION_GRANTED);
+    }
+
+    private void stopScan() {
+        if (mScanner == null) return;
+        try {
+            mScanner.stopScan(scanCallback);
+        } catch (IllegalStateException | SecurityException e) {
+            Log.w(TAG, "Unable to stop Bluetooth scan", e);
         }
     }
 
+    private void scanFailed() {
+        if (mListFragment != null && mListFragment.getView() != null) mListFragment.scanningStopped();
+        Toast.makeText(this, R.string.bluetooth_scan_failed, Toast.LENGTH_LONG).show();
+    }
+
     private void btEnableAndScan() {
+        if (!hasScanPermissions()) {
+            ArrayList<String> permissions = new ArrayList<>();
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
+                permissions.add(Manifest.permission.BLUETOOTH_SCAN);
+            }
+            mScanPermissionsLauncher.launch(permissions.toArray(new String[0]));
+            return;
+        }
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) {
+            scanFailed();
+            return;
+        }
+        if (!adapter.isEnabled()) {
+            mBluetoothEnableActivityLauncher.launch(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE));
+            return;
+        }
         if (!mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
                 !mLocationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
             final AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -405,17 +448,14 @@ public class MainActivity extends AppCompatActivity implements DeviceListFragmen
             builder.setNegativeButton(android.R.string.no, (dialog, which) -> this.finishAffinity());
             builder.show();
         } else {
-            btEnable();
-
-            final Handler handler = new Handler(Looper.getMainLooper());
-            handler.postDelayed(() -> {
-                try {
-                    mScanner.stopScan(scanCallback);
-                    mScanner.startScan(mFilters, mSettings, scanCallback);
-                } catch (IllegalStateException e) {
-                    e.printStackTrace();
-                }
-            }, 5000);
+            try {
+                stopScan();
+                mScanner.startScan(mFilters, mSettings, scanCallback);
+                if (mListFragment != null) mListFragment.scanningStarted();
+            } catch (IllegalStateException | SecurityException e) {
+                Log.e(TAG, "Unable to start Bluetooth scan", e);
+                scanFailed();
+            }
         }
     }
 

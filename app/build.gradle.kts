@@ -10,11 +10,25 @@ android {
         applicationId = "org.asteroidos.sync"
         minSdk = 24
         targetSdk = 33
-        versionCode = 29
-        versionName = "0.29"
+        versionCode = 30
+        versionName = "0.29.1-fork.1"
+    }
+    val releaseKeystore = System.getenv("ASTEROIDOS_KEYSTORE")
+    signingConfigs {
+        if (!releaseKeystore.isNullOrBlank()) {
+            create("forkRelease") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("ASTEROIDOS_STORE_PASSWORD")
+                keyAlias = System.getenv("ASTEROIDOS_KEY_ALIAS")
+                keyPassword = System.getenv("ASTEROIDOS_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
         named("release") {
+            if (!releaseKeystore.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("forkRelease")
+            }
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
