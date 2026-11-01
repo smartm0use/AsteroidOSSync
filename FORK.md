@@ -1,59 +1,57 @@
-# Personal AsteroidOS Sync builds
+# AsteroidOS Sync (Fork)
 
-This is smartm0use's unofficial fork of AsteroidOS Sync. The application keeps
-the original display name **AsteroidOS Sync** and package `org.asteroidos.sync`.
-Fork development is on `fork-main`; upstream `master` is kept separate.
+This repository is an unofficial fork of [AsteroidOS Sync](https://github.com/AsteroidOS/AsteroidOSSync). It integrates fixes for compatibility with modern Android versions (Android 12–16) and quality-of-life improvements while upstream pull requests are pending.
 
-## Version 0.29.1-fork.1
+## Included Improvements
 
-Android `versionCode`: **30**. Future fork releases must increment this number.
-The `-fork.N` suffix distinguishes these APKs from upstream releases.
+This fork integrates the changes proposed in the following upstream pull requests:
 
-Includes local EasyWeather sources to restore builds, icon rendering fixes,
-paired location permission requests, Bluetooth permission/error handling and
-the system Bluetooth enable dialog. Discovery keeps the AsteroidOS service
-filter and applies it in software. Diagnostic scanning/logging of all nearby
-devices is not included.
+- **Build Restoration ([PR #233](https://github.com/AsteroidOS/AsteroidOSSync/pull/233))**: Vendors EasyWeather 1.3 sources locally (JitPack dependency no longer resolves) and fixes a Java variable-scope issue in `SynchronizationService`.
+- **Dimensionless App Icons ([PR #232](https://github.com/AsteroidOS/AsteroidOSSync/pull/232))**: Assigns a 48 dp fallback to drawables without intrinsic dimensions (e.g. `ColorDrawable`), preventing startup crashes and reducing memory allocation.
+- **Location Permissions on Android 12+ ([PR #234](https://github.com/AsteroidOS/AsteroidOSSync/pull/234))**: Ensures `ACCESS_COARSE_LOCATION` and `ACCESS_FINE_LOCATION` are requested together during onboarding, complying with Android 12+ requirements.
+- **Watch Battery in Notification ([PR #235](https://github.com/AsteroidOS/AsteroidOSSync/pull/235))**: Displays the connected watch's battery level in the ongoing notification (e.g. `Connected to dory (battery 73%)` / `Connesso a dory (batteria 73%)`).
+- **Bluetooth Handling**: Fixes Bluetooth error handling, permission checks before BLE scans, and triggers the system dialog when Bluetooth is disabled.
 
-The connected notification displays the watch's battery after the first valid
-reading, for example `Connected to dory (battery 73%)`. Unknown battery values
-are omitted; the cache is cleared for a new connection. English and Italian
-strings are included.
+## Installation & Updates
 
-These changes are related to upstream PRs #232, #233, #234 and #235.
-They do not represent an official AsteroidOS release.
+Pre-built, signed APKs are available on the [GitHub Releases](https://github.com/smartm0use/AsteroidOSSync/releases) page.
 
-## Installation and updates
+> [!IMPORTANT]
+> This fork is signed with a personal certificate different from F-Droid's.
+> You must **uninstall the official F-Droid version** before installing this APK. Subsequent releases of this fork can be updated in-place.
 
-Download the signed APK from this fork's GitHub Releases page. It has a different
-signing certificate from F-Droid: uninstall the F-Droid app before installing
-this APK (uninstalling removes its local settings). The earlier Sync Test build
-uses a different package and may also be removed. Configure permissions and
-the watch connection again after installation.
+## Building from Source
 
-Later releases signed with the same fork key and a higher versionCode can update
-this APK in place. An official/F-Droid APK cannot update it directly because the
-signatures differ. Avoid running multiple sync clients connected to the watch.
+Requirements:
+- JDK 17
+- Android SDK (API Platform 33)
 
-## Building
-
-Use JDK 17 and Android SDK 33. For a signed release set these environment variables:
-
-```text
-ASTEROIDOS_KEYSTORE       absolute path to the release keystore
-ASTEROIDOS_STORE_PASSWORD keystore password
-ASTEROIDOS_KEY_ALIAS      signing key alias
-ASTEROIDOS_KEY_PASSWORD   signing key password
+To assemble an unsigned debug APK:
+```sh
+./gradlew assembleDebug
 ```
 
-Then run `./gradlew build`. Without the signing variables, the release APK is
-unsigned. No private key or signing password is stored in this repository.
-Keep a secure backup of your keystore and passwords: they are required to publish
-updates installable over this fork's previous releases.
+To run unit tests:
+```sh
+./gradlew test
+```
 
-Release signing-certificate SHA-256:
-`a53f7ecbdca47656ff20123f58a6634fec0142aca0b8ca33e87781eec4565724`.
+### Release Signing
 
-Battery-notification regression tests are in `app/src/test/` and run with
-`./gradlew :app:testDebugUnitTest`. They exercise actual notification content,
-battery bounds, reconnect behavior, localization and message feedback avoidance.
+To build a signed release APK, define the following environment variables:
+
+| Variable | Description |
+|---|---|
+| `ASTEROIDOS_KEYSTORE` | Absolute path to the keystore file |
+| `ASTEROIDOS_STORE_PASSWORD` | Keystore password |
+| `ASTEROIDOS_KEY_ALIAS` | Key alias |
+| `ASTEROIDOS_KEY_PASSWORD` | Key password |
+
+Then run:
+```sh
+./gradlew assembleRelease
+```
+Without these variables, `assembleRelease` produces an unsigned APK.
+
+Release certificate SHA-256 fingerprint:  
+`a53f7ecbdca47656ff20123f58a6634fec0142aca0b8ca33e87781eec4565724`

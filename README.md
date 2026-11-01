@@ -1,3 +1,8 @@
+> [!NOTE]
+> **smartm0use's fork:** Provides compatibility fixes for modern Android versions (Android 12–16) and new features like watch battery level in notifications.
+> - **Pre-built APKs**: [GitHub Releases](https://github.com/smartm0use/AsteroidOSSync/releases)
+> - **Changelog & Documentation**: See [FORK.md](FORK.md)
+
 [![Contributors][contributors-shield]][contributors-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
