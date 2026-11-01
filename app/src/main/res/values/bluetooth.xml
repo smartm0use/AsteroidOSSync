@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bluetooth_scan_failed">Unable to scan. Check Bluetooth, location and app permissions, then retry.</string>
+</resources>
